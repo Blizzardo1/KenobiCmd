@@ -1,3 +1,11 @@
+[![Build](https://github.com/Blizzardo1/KenobiCmd/actions/workflows/cmake-single-platform.yml/badge.svg?branch=main)](https://github.com/Blizzardo1/KenobiCmd/actions/workflows/cmake-single-platform.yml)
+[![License](https://img.shields.io/github/license/Blizzardo1/KenobiCmd)](https://github.com/Blizzardo1/KenobiCmd/blob/main/LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/Blizzardo1/KenobiCmd)](https://github.com/Blizzardo1/KenobiCmd/commits/main)
+[![Commit activity](https://img.shields.io/github/commit-activity/w/Blizzardo1/KenobiCmd/main)](https://github.com/Blizzardo1/KenobiCmd/graphs/commit-activity)
+[![Issues](https://img.shields.io/github/issues/Blizzardo1/KenobiCmd)](https://github.com/Blizzardo1/KenobiCmd/issues)
+[![Contributors](https://img.shields.io/github/contributors/Blizzardo1/KenobiCmd)](https://github.com/Blizzardo1/KenobiCmd/graphs/contributors)
+
+
 # KenobiCmd
 
 A simple communicator using the QMK Kenobi Firmware.
