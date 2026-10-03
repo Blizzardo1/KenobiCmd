@@ -166,4 +166,12 @@ int get_layout_info();
  */
 int get_lock_status();
 
+/**
+ * @brief Sleep for a specified time in milliseconds.
+ *
+ * @param msec the amount of time to sleep in ms.
+ * @return int 0 on success; -1 on failure;
+ */
+int msleep(long msec);
+
 #endif

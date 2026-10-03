@@ -13,6 +13,8 @@ typedef struct {
     int factory_test;
     int banner;
     int strip;
+    int daemon;
+    unsigned int interval_ms;
 }arguments;
 
 int arg_usage(void);

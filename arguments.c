@@ -1,5 +1,6 @@
 #include <argp.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "arguments.h"
 
@@ -19,6 +20,8 @@ static struct argp_option options[] = {
     {"factory-test", 'f', 0, 0, "Run factory test"},
     {"no-banner", 'n', 0, 0, "Don't print the banner"},
     {"strip", 's', 0, 0, "Strip text, leave only numbers"},
+    {"daemon", 'd', 0, 0, "Run this as a daemon"},
+    {"interval", 'i', "MS", 0, "Specify the refresh interval in milliseconds"},
     {0}
 };
 
@@ -27,14 +30,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     arguments *args = state->input;
 
     switch(key) {
-        case 'b': args->battery = 1;            break;
-        case 'k': args->keyboard_layout = 1;    break;
-        case 'l': args->lock_status = 1;        break;
-        case 'w': args->wpm = 1;                break;
-        case 't': args->bluetooth = 1;          break;
-        case 'f': args->factory_test = 1;       break;
-        case 'n': args->banner = 0;             break;
-        case 's': args->strip = 1;              break;
+        case 'b': args->battery = 1;                     break;
+        case 'k': args->keyboard_layout = 1;             break;
+        case 'l': args->lock_status = 1;                 break;
+        case 'w': args->wpm = 1;                         break;
+        case 't': args->bluetooth = 1;                   break;
+        case 'f': args->factory_test = 1;                break;
+        case 'n': args->banner = 0;                      break;
+        case 's': args->strip = 1;                       break;
+        case 'd': args->daemon = 1;                      break;
+        case 'i': args->interval_ms = atoi(arg);    break;
         default: return ARGP_ERR_UNKNOWN;
     }
     return 0;
@@ -57,6 +62,8 @@ arguments parse(int argc, char **argv) {
     args.factory_test = 0;
     args.banner = 1;
     args.strip = 0;
+    args.daemon = 0;
+    args.interval_ms = 1000;
 
     error_t arg_error = argp_parse(&argp, argc, argv, 0, NULL, &args);
     if(arg_error == EINVAL) {

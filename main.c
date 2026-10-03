@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <time.h>
+#include <unistd.h>
 #include <string.h>
 #include "main.h"
 #include "pretty.h"
@@ -10,6 +12,9 @@
 
 struct hid_device_info *hdi;
 hid_device *handle;
+
+int out_lines = 0;
+int is_daemon = 0;
 
 
 char* get_name(COMMANDS command) {
@@ -47,6 +52,7 @@ int lerror(char *msg, ...) {
     va_start(varg, msg);
     vsnprintf(rmsg, sizeof(rmsg), msg, varg);
     va_end(varg);
+    out_lines++;
     return fprintf(stderr, "\x1b[1;31m%s\x1b[0m\n", rmsg);
 }
 
@@ -56,6 +62,7 @@ int lwarn(char *msg, ...) {
     va_start(varg, msg);
     vsnprintf(rmsg, sizeof(rmsg), msg, varg);
     va_end(varg);
+    out_lines++;
     return fprintf(stdout, "\x1b[1;33mWarning: %s\x1b[0m\n", rmsg);
 }
 
@@ -65,6 +72,7 @@ int linfo(char *msg, ...) {
     va_start(varg, msg);
     vsnprintf(rmsg, sizeof(rmsg), msg, varg);
     va_end(varg);
+    out_lines++;
     return fprintf(stdout, "\x1b[1;34mInfo: %s\x1b[0m\n", rmsg);
 }
 
@@ -75,15 +83,37 @@ int ldebug(char *msg, ...) {
     va_start(varg, msg);
     vsnprintf(rmsg, sizeof(rmsg), msg, varg);
     va_end(varg);
+    out_lines++;
     return fprintf(stdout, "\x1b[1;35mDebug: %s\x1b[0m\n", rmsg);
 #else
     return 0;
 #endif
 }
 
+void cleanup() {
+    ldebug("Cleaning up...");
+    if(handle != NULL)
+        hid_close(handle);
+    hid_exit();
+
+#ifdef DEBUG
+    success();
+#endif
+
+    ldebug("Goodbye :')");
+}
+
 void segfault(int trap) {
     lerror("A Segmentation fault happened! Please check the source and try again! Trap: %d", trap);
     exit(EXIT_FAILURE);
+}
+
+void trap(int trap) {
+    linfo("Stopping Daemon.");
+    if(trap == SIGABRT) {
+        lerror("Something happened while terminating session. Please check the output and open an issue on GitHub.");
+    }
+    is_daemon = 0;
 }
 
 void success() {
@@ -99,6 +129,7 @@ void initialize() {
     printf("Initializing... ");
 #endif
     signal(SIGSEGV, segfault);
+    signal(SIGINT, trap);
     int res = hid_init();
     if(res == 1) {
         lerror("Unable to initialize HID!");
@@ -109,13 +140,6 @@ void initialize() {
 #endif
 }
 
-void cleanup() {
-    ldebug("Cleaning up...");
-    if(handle != NULL)
-        hid_close(handle);
-    hid_exit();
-    ldebug("Goodbye :')");
-}
 
 void print_buffer(const unsigned char *buffer) {
 #ifdef DEBUG
@@ -307,15 +331,37 @@ static hid_device* open_device(void) {
     return device;
 }
 
-void usage(void) {
-    (void)0;
+/**
+ * @brief Rewind the terminal to the beginning of the output block
+ */
+static void rewind_out(void) {
+    if(!isatty(STDOUT_FILENO)) return;
+    if(out_lines > 0) {
+        printf("\x1b[%dA", out_lines);
+    }
+    printf("\r\x1b[J");
+    fflush(stdout);
+    out_lines = 0;
+}
+
+int msleep(long msec) {
+    struct timespec ts;
+    int res;
+
+    if(msec < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+    do {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+    return res;
 }
 
 int main(int argc, char **argv) {
-    if(argc < 2) {
-        usage();
-    }
-
     arguments args = parse(argc, argv);
 
     initialize();
@@ -342,41 +388,7 @@ int main(int argc, char **argv) {
         print_info();
     }
 
-    if(args.battery) {
-        call(args.strip, &(InfoBlock){
-            .name = "Get Battery Info",
-            .command = COMMAND_BATTERY,
-            .cb = respond,
-            .parse = parse_battery
-        });
-    }
-
-    if(args.keyboard_layout) {
-        call(args.strip, &(InfoBlock){
-            .name = "Get Layout Info",
-            .command = COMMAND_LAYOUT,
-            .cb = respond,
-            .parse = parse_keyboard_layout
-        });
-    }
-
-    if(args.wpm){
-        call(args.strip, &(InfoBlock){
-            .name = "Get Words Per Minute",
-            .command = COMMAND_WPM,
-            .cb = respond,
-            .parse = parse_wpm
-        });
-    }
-
-    if(args.lock_status) {
-        call(args.strip, &(InfoBlock) {
-            .name = "Get Lock Status",
-            .command = COMMAND_LOCK_STATUS,
-            .cb = respond,
-            .parse = parse_lock_status
-        });
-    }
+    ldebug("Interval set at %dms", args.interval_ms);
 
     if(args.bluetooth) {
         call(0, &(InfoBlock) {
@@ -397,6 +409,50 @@ int main(int argc, char **argv) {
             .message = "Performing factory test..."
         });
     }
+
+    is_daemon = args.daemon;
+
+    do {
+        ldebug("While args.daemon == 1 (%d); Sleep for (%dms)", args.daemon, args.interval_ms);
+        if(args.battery) {
+            call(args.strip, &(InfoBlock){
+                .name = "Get Battery Info",
+                .command = COMMAND_BATTERY,
+                .cb = respond,
+                .parse = parse_battery
+            });
+        }
+
+        if(args.keyboard_layout) {
+            call(args.strip, &(InfoBlock){
+                .name = "Get Layout Info",
+                .command = COMMAND_LAYOUT,
+                .cb = respond,
+                .parse = parse_keyboard_layout
+            });
+        }
+
+        if(args.wpm){
+            call(args.strip, &(InfoBlock){
+                .name = "Get Words Per Minute",
+                .command = COMMAND_WPM,
+                .cb = respond,
+                .parse = parse_wpm
+            });
+        }
+
+        if(args.lock_status) {
+            call(args.strip, &(InfoBlock) {
+                .name = "Get Lock Status",
+                .command = COMMAND_LOCK_STATUS,
+                .cb = respond,
+                .parse = parse_lock_status
+            });
+        }
+
+        msleep(args.interval_ms);
+        if(is_daemon) rewind_out();
+    } while(is_daemon);
 
     cleanup();
 
