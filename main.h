@@ -11,7 +11,7 @@
 #define USAGE_PAGE 0xFF60
 #define USAGE_ID 0x61
 
-#define __MESSAGE_BUFFER 1024
+#define MESSAGE_BUFFER 1024
 
 #define BUFF_SIZE 32
 #define BUFF_OFF 2
@@ -26,11 +26,37 @@
 #define ERRNEO lerror("Keyboard was never opened for reading/writing!")
 
 typedef enum {
+    TRANSPORT_NONE,
+    TRANSPORT_USB,
+    TRANSPORT_BLUETOOTH,
+} transport;
+
+typedef enum {
+    OS_UNSURE,
+    OS_LINUX,
+    OS_WINDOWS,
+    OS_MACOS,
+    OS_IOS,
+} os_variant;
+
+typedef enum {
     COMMAND_A = 0x41,
     COMMAND_BATTERY = 0xC0,
     COMMAND_LAYOUT = 0xC1,
     COMMAND_LOCK_STATUS = 0xC2,
     COMMAND_WPM = 0xC3,
+    COMMAND_GET_OS = 0xC4,
+    COMMAND_GET_CONN_MODE = 0xC5,
+    COMMAND_GET_PING = 0xC6,
+    COMMAND_GET_VERSION = 0xC7,
+    COMMAND_SET_BRIGHTNESS = 0xC8,
+    COMMAND_SET_RGB_MODE = 0xC9,
+    COMMAND_SET_RGB_COLOR = 0xCA,
+    COMMAND_SET_LED = 0xCB,
+    COMMAND_CLEAR_LED = 0xCC,
+    COMMAND_LOCK = 0xCD,
+    COMMAND_BOOTLOADER = 0xCE,
+    COMMAND_EVENT = 0xCF,
     COMMAND_BLUETOOTH_ENABLE = 0xAA,
     COMMAND_FACTORY_TEST = 0xAB
 } COMMANDS;
@@ -46,6 +72,7 @@ typedef struct {
     parse_cb parse;
     int skip_read;
     char *message;
+    unsigned char params[PARAM_BUFF];
 } InfoBlock;
 
 
@@ -141,30 +168,9 @@ int read_response(unsigned char *response);
  * @brief Send a command and receive a response
  *
  * @param command A number usually in Hex that will be constructed into the sending buffer.
- * @return int Returns 0 on success; else -1 for failure.
+ * @return int Returns 0 on success; 1 if the device sent no reply; -1 for failure.
  */
 int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read);
-
-/**
- * @brief Get battery information.
- *
- * @return int Returns 0 on success; else -1 for failure.
- */
-int get_battery_info();
-
-/**
- * @brief Get the device layout information.
- *
- * @return int Returns 0 on success; else -1 for failure.
- */
-int get_layout_info();
-
-/**
- * @brief Get the current lock status of the device.
- *
- * @return int Returns 0 on success; else -1 for failure.
- */
-int get_lock_status();
 
 /**
  * @brief Sleep for a specified time in milliseconds.
