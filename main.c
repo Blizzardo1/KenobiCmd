@@ -428,10 +428,10 @@ void send_feature_report() {
     hid_send_feature_report(handle, buffer, sizeof(buffer));
 }
 
-void call(int strip, InfoBlock *ib) {
+int call(int strip, InfoBlock *ib) {
     if (!handle) {
         ERRNEO;
-        return;
+        return -1;
     }
 
     if(ib->skip_read && ib->message) {
@@ -451,6 +451,7 @@ void call(int strip, InfoBlock *ib) {
 
     if(res == 1) {
         lwarn("No Reply");
+        return -1;
     }
 
     if(ib->parse)
@@ -458,6 +459,7 @@ void call(int strip, InfoBlock *ib) {
 #ifdef DEBUG
     printf("------\n");
 #endif
+    return 0;
 }
 
 void print_info() {
@@ -741,6 +743,20 @@ int main(int argc, char **argv) {
 
     is_daemon = args.flags.daemon;
 
+    if (args.script_path || args.flags.interactive) {
+        signal(SIGINT, SIG_DFL);      // the daemon trap() isn't wanted here; Ctrl-C should just exit
+        int rc = 0;
+        if (args.script_path) {
+            FILE *f = strcmp(args.script_path, "-") == 0 ? stdin : fopen(args.script_path, "r");
+            if (!f) { lerror("Cannot open %s", args.script_path); cleanup(); return EXIT_FAILURE; }
+            rc = run_script(f, 0, args.flags.strip);
+            if (f != stdin) fclose(f);
+        } else {
+            rc = run_script(stdin, 1, args.flags.strip);
+        }
+        cleanup();
+        return rc ? EXIT_FAILURE : 0;
+    }
     loop(&args);
 
     cleanup();

@@ -23,6 +23,7 @@ static struct argp_option options[] = {
     {"get-conn-mode",   'c', 0,               0, "Get connection mode information"},
     {"get-version",     'v', 0,               0, "Get version information"},
     {"interval",        'i', "MS",            0, "Refresh interval in milliseconds. Use -d for daemon mode"},
+    {"interactive",     'I', 0,               0, "Run in interactive mode"},
     {"keyboard-layout", 'k', 0,               0, "Get keyboard layout (useful with -d)"},
     {"lock-status",     'l', 0,               0, "Get keyboard lock status"},
     {"lock",            'O', 0,               0, "Lock the keyboard"},
@@ -33,11 +34,12 @@ static struct argp_option options[] = {
     {"set-rgb-color",   'G', "H,S,V",         0, "Set keyboard HSV color (each 0-255)"},
     {"set-rgb-mode",    'R', "MODE",          0, "Set keyboard RGB effect number"},
     {"strip",           's', 0,               0, "Strip text, leave only numbers"},
+    {"script",          'S', "PATH",          0, "Run the script from the specified file"},
     {"wpm",             'w', 0,               0, "Get keyboard words per minute (useful with -d)"},
     {0}
 };
 
-static bool parse_int(const char *s, long lo, long hi, long *out) {
+bool parse_int(const char *s, long lo, long hi, long *out) {
     char *end;
     errno = 0;
     long v = strtol(s, &end, 0);
@@ -56,10 +58,12 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
         case 'd': args->flags.daemon = 1;                      break;
         case 'f': args->flags.factory_test = 1;                break;
         case 'i': args->interval_ms = atoi(arg);         break;
+        case 'I': args->flags.interactive = 1;                 break;
         case 'k': args->flags.keyboard_layout = 1;             break;
         case 'l': args->flags.lock_status = 1;                 break;
         case 'n': args->flags.banner = 0;                      break;
         case 's': args->flags.strip = 1;                       break;
+        case 'S': args->script_path = arg;                     break;
         case 't': args->flags.bluetooth = 1;                   break;
         case 'w': args->flags.wpm = 1;                         break;
             case 'B':
@@ -153,6 +157,19 @@ arguments parse(int argc, char **argv) {
     args.flags.get_conn_mode = 0;
     args.flags.ping = 0;
     args.flags.get_os = 0;
+    args.flags.interactive = 0;
+    args.script_path = NULL;
+    args.values.brightness = 0;
+    args.values.rgb_mode = 0;
+    args.values.hsv[0] = 0;
+    args.values.hsv[1] = 0;
+    args.values.hsv[2] = 0;
+    args.values.clear_idx = 0;
+    args.values.led_idx = 0;
+    args.values.led_rgb[0] = 0;
+    args.values.led_rgb[1] = 0;
+    args.values.led_rgb[2] = 0;
+    args.values.led_ms = 0;
 
     error_t arg_error = argp_parse(&argp, argc, argv, 0, NULL, &args);
     if(arg_error == EINVAL) {

@@ -75,6 +75,17 @@ typedef struct {
     unsigned char params[PARAM_BUFF];
 } InfoBlock;
 
+/**
+ * @brief Runs the script from the given input file, optionally in interactive mode and with optional stripping of output.
+ *
+ * @remark This function is wired to script.c
+ *
+ * @param in The input file to read the script from.
+ * @param interactive Whether to run the script in interactive mode.
+ * @param strip Whether to strip output.
+ * @return int 0 on success, -1 on failure.
+ */
+int run_script(FILE *in, int interactive, int strip);
 
 /**
  * @brief Get the name from the COMMANDS enum field.
@@ -148,6 +159,14 @@ void initialize();
 void cleanup();
 
 /**
+ * @brief Calls the appropriate handler for the given InfoBlock, optionally stripping output.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param ib The InfoBlock containing the data to be processed.
+ */
+int call(int strip, InfoBlock *ib);
+
+/**
  * @brief Sends a command to the HID device when opened.
  *
  * @param command A number usually in Hex that will be constructed into the sending buffer.
@@ -179,5 +198,89 @@ int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read);
  * @return int 0 on success; -1 on failure;
  */
 int msleep(long msec);
+
+/**
+ * @brief Parses the status response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_status(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the battery status response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_battery(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the keyboard layout response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_battery(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the keyboard layout response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+
+void parse_keyboard_layout(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the lock status response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_lock_status(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the WPM (words per minute) response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_wpm(int strip, unsigned char *data);
+
+
+/**
+ * Parses the version response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_version(int strip, unsigned char *data);
+
+
+/**
+ * @brief Parses the connection mode response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_conn_mode(int strip, unsigned char *data);
+
+
+/**
+ * @brief Parses the ping response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_ping(int strip, unsigned char *data);
+
+/**
+ * @brief Parses the operating system response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_os(int strip, unsigned char *data);
 
 #endif

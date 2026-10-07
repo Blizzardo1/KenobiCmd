@@ -3,10 +3,13 @@
 
 #include <argp.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
     char *args[6];
     unsigned int interval_ms;
+    char *script_path;
+
     struct {
         unsigned int battery : 1;
         unsigned int keyboard_layout : 1;
@@ -28,6 +31,7 @@ typedef struct {
         unsigned int get_conn_mode : 1;
         unsigned int ping : 1;
         unsigned int get_os : 1;
+        unsigned int interactive : 1;
     } flags;
         struct {
         uint8_t brightness;
@@ -42,6 +46,20 @@ typedef struct {
 
 int arg_usage(void);
 
+/**
+ * @brief Parses an integer from a string, ensuring it falls within the specified range.
+ * Parses the string `s` as an integer and checks if it falls within the range `lo` to `hi`.
+ * If the conversion is successful and the value is within the range, it stores the result in `out` and returns true.
+ * Otherwise, it returns false.
+ *
+ * @param s The string to parse as an integer.
+ * @param lo The lower bound of the valid range.
+ * @param hi The upper bound of the valid range.
+ * @param out A pointer to store the parsed integer if successful.
+ * @return true if the parsing was successful and the value is within the range.
+ * @return false if the parsing failed or the value is out of range.
+ */
+bool parse_int(const char *s, long lo, long hi, long *out);
 arguments parse(int argc, char **argv);
 
 #endif
