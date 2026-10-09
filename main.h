@@ -200,6 +200,14 @@ int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read);
 int msleep(long msec);
 
 /**
+ * @brief Parses the watch events response from the HID device.
+ *
+ * @param strip Whether to print information or just the raw data.
+ * @param data The raw data received from the HID device.
+ */
+void parse_watch_event(int strip, unsigned char *data);
+
+/**
  * @brief Parses the status response from the HID device.
  *
  * @param strip Whether to print information or just the raw data.
