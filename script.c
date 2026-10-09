@@ -41,6 +41,14 @@ QUERY(sc_version, "Get Version",     COMMAND_GET_VERSION,   parse_version)
 QUERY(sc_conn,    "Get Conn Mode",   COMMAND_GET_CONN_MODE, parse_conn_mode)
 QUERY(sc_lockst,  "Get Lock Status", COMMAND_LOCK_STATUS,   parse_lock_status)
 QUERY(sc_lock,    "Lock Keyboard",   COMMAND_LOCK,          parse_status)
+QUERY(sc_watch,	  "Watch Events",    COMMAND_WATCH,         parse_watch_events)
+
+static int sc_watch(int argc, char **argv) {
+	(void) argc;
+	(void) argv;
+	// Blank function for now until I implement the Event Watcher
+	return 0;
+}
 
 /**
  * @brief Sets the RGB mode for the specified LED.
@@ -50,7 +58,8 @@ QUERY(sc_lock,    "Lock Keyboard",   COMMAND_LOCK,          parse_status)
  * @return int 0 on success.
  */
 static int sc_rgb_mode(int argc, char **argv) {
-    long m; (void)argc;
+    long m;
+    (void)argc;
     if (!parse_int(argv[1], 0, 255, &m)) return bad("rgb-mode 0-255");
     return run_block(&(InfoBlock){ .name = "Set RGB Mode", .command = COMMAND_SET_RGB_MODE,
         .cb = respond, .parse = parse_status, .params = { (unsigned char)m } });

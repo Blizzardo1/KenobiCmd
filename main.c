@@ -246,6 +246,18 @@ int read_response(unsigned char *response) {
     return res;
 }
 
+void parse_watch_event(int strip, unsigned char * data) {
+	uint8_t event = data[1];
+	if(strip) {
+		printf("%s\n", event);
+		return;
+	}
+	// Here is where we can parse the events.
+	// It's simple, The data that we pass in is going to be the command that was parsed.
+	// It's a basic watcher which means the data flow is going to be double transmitted,
+	// from my understanding.
+}
+
 void parse_status(int strip, unsigned char *data) {
     static const char *why[] = { "OK", "value out of range", "bad length", "denied" };
     uint8_t s = data[1];
@@ -667,6 +679,15 @@ static void run_requested_commands(const arguments *args) {
             .cb = respond,
             .parse = parse_os
         });
+    }
+
+    if(args->flags.get_event) {
+    	call(args->flags.strip, &(InfoBlock) {
+	    .name = "Get Event",
+	    .command = COMMAND_EVENT,
+	    .cb = respond,
+	    .parse = parse_watch_event
+	});
     }
 
     if (args->flags.bootloader) {

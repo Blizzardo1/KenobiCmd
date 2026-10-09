@@ -32,6 +32,7 @@ typedef struct {
         unsigned int ping : 1;
         unsigned int get_os : 1;
         unsigned int interactive : 1;
+	unsigned int get_event : 1;
     } flags;
         struct {
         uint8_t brightness;

@@ -158,6 +158,7 @@ arguments parse(int argc, char **argv) {
     args.flags.ping = 0;
     args.flags.get_os = 0;
     args.flags.interactive = 0;
+    args.flags.get_event = 0;
     args.script_path = NULL;
     args.values.brightness = 0;
     args.values.rgb_mode = 0;
