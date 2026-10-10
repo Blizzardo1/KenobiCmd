@@ -32,6 +32,7 @@ typedef struct {
         unsigned int ping : 1;
         unsigned int get_os : 1;
         unsigned int interactive : 1;
+        unsigned int watch : 1;
 	unsigned int get_event : 1;
     } flags;
         struct {
@@ -42,6 +43,7 @@ typedef struct {
         uint8_t led_idx;
         uint8_t led_rgb[3];
         uint16_t led_ms;
+        uint8_t watch_mask;
     } values;
 } arguments;
 

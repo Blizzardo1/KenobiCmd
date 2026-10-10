@@ -41,7 +41,6 @@ QUERY(sc_version, "Get Version",     COMMAND_GET_VERSION,   parse_version)
 QUERY(sc_conn,    "Get Conn Mode",   COMMAND_GET_CONN_MODE, parse_conn_mode)
 QUERY(sc_lockst,  "Get Lock Status", COMMAND_LOCK_STATUS,   parse_lock_status)
 QUERY(sc_lock,    "Lock Keyboard",   COMMAND_LOCK,          parse_status)
-QUERY(sc_watch,	  "Watch Events",    COMMAND_EVENT,         parse_watch_event)
 
 
 /**

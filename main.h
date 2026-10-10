@@ -19,6 +19,11 @@
 
 #define RESPONSE_TIMEOUT 3000
 
+#define EV_BIT(t) (1u << ((t) - 1))
+#define EV_ALL (EV_BIT(EV_LOCK) | EV_BIT(EV_LAYER) | EV_BIT(EV_OS) | EV_BIT(EV_BATTERY))
+#define EV_LEASE_DEFAULT_S 30
+#define EV_LEASE_MAX_S 120
+
 
 /**
  * @brief Error - Keyboard Never Opened for reading/writing
@@ -57,10 +62,26 @@ typedef enum {
     COMMAND_LOCK = 0xCD,
     COMMAND_BOOTLOADER = 0xCE,
     COMMAND_EVENT = 0xCF,
+    COMMAND_SUBSCRIBE = 0xD1,
     COMMAND_BLUETOOTH_ENABLE = 0xAA,
     COMMAND_FACTORY_TEST = 0xAB
 } COMMANDS;
 
+
+typedef enum {
+    EV_LOCK = 1,
+    EV_LAYER = 2,
+    EV_OS = 3,
+    EV_BATTERY = 4,
+    EV_UNLOCK,
+    EV_BATTERY_LOW,
+    EV_BATTERY_FULL,
+    EV_LOCK_STATUS_CHANGED,
+    EV_WPM_CHANGED,
+    EV_VERSION_CHANGED,
+    EV_CONN_MODE_CHANGED,
+    EV_PING_RECEIVED,
+} EVENT_TYPE;
 
 typedef int (*callback)(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read);
 typedef void (*parse_cb)(int strip, unsigned char *data);
@@ -202,10 +223,9 @@ int msleep(long msec);
 /**
  * @brief Parses the watch events response from the HID device.
  *
- * @param strip Whether to print information or just the raw data.
  * @param data The raw data received from the HID device.
  */
-void parse_watch_event(int strip, unsigned char *data);
+uint8_t parse_ev_mask(const char *s);
 
 /**
  * @brief Parses the status response from the HID device.
@@ -217,14 +237,6 @@ void parse_status(int strip, unsigned char *data);
 
 /**
  * @brief Parses the battery status response from the HID device.
- *
- * @param strip Whether to print information or just the raw data.
- * @param data The raw data received from the HID device.
- */
-void parse_battery(int strip, unsigned char *data);
-
-/**
- * @brief Parses the keyboard layout response from the HID device.
  *
  * @param strip Whether to print information or just the raw data.
  * @param data The raw data received from the HID device.

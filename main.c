@@ -12,76 +12,57 @@
 
 // #define DEBUG
 
+#define WATCH_LEASE_S 30
+
 struct hid_device_info *hdi;
 hid_device *handle;
 
+uint8_t exit_code = EXIT_SUCCESS;
+volatile sig_atomic_t running = 0;
+volatile sig_atomic_t is_daemon = 0;
 int out_lines = 0;
-int is_daemon = 0;
 
+const char *os_name(uint8_t os) {
+    switch((os_variant)os) {
+        case OS_UNSURE:
+            return "Unsure";
+        case OS_LINUX:
+            return "Linux";
+        case OS_WINDOWS:
+            return "Windows";
+        case OS_MACOS:
+            return "macOS";
+        case OS_IOS:
+            return "iOS";
+        default:
+            return "Unknown";
+    }
+}
 
 char* get_name(COMMANDS command) {
-    char *name;
     switch(command) {
-        case COMMAND_A:
-            name = "(A) Command";
-            break;
-        case COMMAND_BATTERY:
-            name = "Battery Command";
-            break;
-        case COMMAND_LAYOUT:
-            name = "Layout Command";
-            break;
-        case COMMAND_LOCK_STATUS:
-            name = "Lock Status Command";
-            break;
-        case COMMAND_BLUETOOTH_ENABLE:
-            name = "Bluetooth Enable Command";
-            break;
-        case COMMAND_WPM:
-            name = "Words Per Minute";
-            break;
-        case COMMAND_FACTORY_TEST:
-            name = "Factory Test Command";
-            break;
-        case COMMAND_GET_OS:
-            name = "Get OS Command";
-            break;
-        case COMMAND_GET_CONN_MODE:
-            name = "Get Connection Mode Command";
-            break;
-        case COMMAND_GET_PING:
-            name = "Get Ping Command";
-            break;
-        case COMMAND_GET_VERSION:
-            name = "Get Version Command";
-            break;
-        case COMMAND_SET_BRIGHTNESS:
-            name = "Set Brightness Command";
-            break;
-        case COMMAND_SET_RGB_MODE:
-            name = "Set RGB Mode Command";
-            break;
-        case COMMAND_SET_RGB_COLOR:
-            name = "Set RGB Color Command";
-            break;
-        case COMMAND_SET_LED:
-            name = "Set LED Command";
-            break;
-        case COMMAND_CLEAR_LED:
-            name = "Clear LED Command";
-            break;
-        case COMMAND_LOCK:
-            name = "Lock Command";
-            break;
-        case COMMAND_BOOTLOADER:
-            name = "Bootloader Command";
-            break;
-        case COMMAND_EVENT:
-            name = "Event Command";
-            break;
-        }
-
-    return name;
+        case COMMAND_A:                return "(A) Command";
+        case COMMAND_BATTERY:          return "Battery Command";
+        case COMMAND_LAYOUT:           return "Layout Command";
+        case COMMAND_LOCK_STATUS:      return "Lock Status Command";
+        case COMMAND_BLUETOOTH_ENABLE: return "Bluetooth Enable Command";
+        case COMMAND_WPM:              return "Words Per Minute";
+        case COMMAND_FACTORY_TEST:     return "Factory Test Command";
+        case COMMAND_GET_OS:           return "Get OS Command";
+        case COMMAND_GET_CONN_MODE:    return "Get Connection Mode Command";
+        case COMMAND_GET_PING:         return "Get Ping Command";
+        case COMMAND_GET_VERSION:      return "Get Version Command";
+        case COMMAND_SET_BRIGHTNESS:   return "Set Brightness Command";
+        case COMMAND_SET_RGB_MODE:     return "Set RGB Mode Command";
+        case COMMAND_SET_RGB_COLOR:    return "Set RGB Color Command";
+        case COMMAND_SET_LED:          return "Set LED Command";
+        case COMMAND_CLEAR_LED:        return "Clear LED Command";
+        case COMMAND_LOCK:             return "Lock Command";
+        case COMMAND_BOOTLOADER:       return "Bootloader Command";
+        case COMMAND_EVENT:            return "Event Command";
+        case COMMAND_SUBSCRIBE:        return "Subscribe Command";
+        default:                       return "Unknown Command";
+    }
 }
 
 int lerror(char *msg, ...) {
@@ -124,14 +105,17 @@ int ldebug(char *msg, ...) {
     out_lines++;
     return fprintf(stdout, "\x1b[1;35mDebug: %s\x1b[0m\n", rmsg);
 #else
+    (void)msg;
     return 0;
 #endif
 }
 
 void cleanup() {
     ldebug("Cleaning up...");
-    if(handle != NULL)
+    if(handle != NULL) {
         hid_close(handle);
+        handle = NULL;
+    }
     hid_exit();
 
 #ifdef DEBUG
@@ -146,11 +130,13 @@ void segfault(int trap) {
     exit(EXIT_FAILURE);
 }
 
-void trap(int trap) {
-    linfo("Stopping Daemon.");
-    if(trap == SIGABRT) {
-        lerror("Something happened while terminating session. Please check the output and open an issue on GitHub.");
-    }
+/**
+ * @brief SIGINT/SIGTERM handler. Only sets flags, since nothing else is
+ * safe to do inside a signal handler.
+ */
+void trap(int sig) {
+    (void)sig;
+    running = 0;
     is_daemon = 0;
 }
 
@@ -168,14 +154,21 @@ void initialize() {
 #endif
     signal(SIGSEGV, segfault);
     signal(SIGINT, trap);
-    int res = hid_init();
-    if(res == 1) {
+    signal(SIGTERM, trap);   // `timeout`, systemd and friends: let watch unsubscribe cleanly
+
+    // hid_init() returns 0 on success and -1 on failure
+    if(hid_init() != 0) {
         lerror("Unable to initialize HID!");
-        return;
+        exit(EXIT_FAILURE);
     }
 #ifdef DEBUG
     success();
 #endif
+}
+
+static int send_subscribe(uint8_t watch_mask) {
+    unsigned char data[PARAM_BUFF] = {watch_mask, WATCH_LEASE_S};
+    return send_command(COMMAND_SUBSCRIBE, data);
 }
 
 static int read_matching(unsigned char command, unsigned char *out) {
@@ -236,7 +229,6 @@ int read_response(unsigned char *response) {
                     BUFF_SIZE,
                     RESPONSE_TIMEOUT);
 
-
     if(res < 0) {
         lerror("Error reading from device: %ls", hid_error(handle));
     } else if(res == 0) {
@@ -246,16 +238,78 @@ int read_response(unsigned char *response) {
     return res;
 }
 
-void parse_watch_event(int strip, unsigned char * data) {
-	uint8_t event = data[1];
-	if(strip) {
-		printf("%s\n", event);
-		return;
-	}
-	// Here is where we can parse the events.
-	// It's simple, The data that we pass in is going to be the command that was parsed.
-	// It's a basic watcher which means the data flow is going to be double transmitted,
-	// from my understanding.
+/**
+ * @brief Print one event frame: [EVENT][type][a][b].
+ * @return fflush() result; EOF means the reader went away.
+ */
+static int print_event(const unsigned char *data, int strip) {
+    uint8_t event = data[1];
+    uint8_t a = data[2];
+
+    switch(event) {
+        case EV_LOCK: {
+            static const char *l[] = {"unlocked", "locked", "pending"};
+            if(strip) {
+                printf("lock %u\n", a);
+            } else {
+                printf("lock: %s\n", a < 3 ? l[a] : "unknown");
+            }
+            break;
+        }
+        case EV_LAYER:
+            if(strip) {
+                printf("layer %u\n", a);
+            } else {
+                printf("layer: %u\n", a);
+            }
+            break;
+        case EV_OS:
+            if(strip) {
+                printf("os %u\n", a);
+            } else {
+                printf("os: %s\n", os_name(a));
+            }
+            break;
+        case EV_BATTERY:
+            if(strip) {
+                printf("battery %u\n", a);
+            } else {
+                printf("battery: %u%%\n", a);
+            }
+            break;
+        default:
+            if(!strip) {
+                printf("unknown event: 0x%02X\n", event);
+            }
+            break;
+    }
+    return fflush(stdout);
+}
+
+uint8_t parse_ev_mask(const char *s) {
+    if (!s) return EV_ALL;
+
+    char *dup = strdup(s);
+    if (!dup) return 0;
+
+    char *save = NULL;
+    uint8_t m = 0;
+    for (const char *t = strtok_r(dup, ",", &save); t; t = strtok_r(NULL, ",", &save)) {
+        if (!strcmp(t, "lock"))
+            m |= EV_BIT(EV_LOCK);
+        else if (!strcmp(t, "layer"))
+            m |= EV_BIT(EV_LAYER);
+        else if (!strcmp(t, "os"))
+            m |= EV_BIT(EV_OS);
+        else if (!strcmp(t, "battery"))
+            m |= EV_BIT(EV_BATTERY);
+        else {
+            free(dup);
+            return 0;
+        }
+    }
+    free(dup);
+    return m;
 }
 
 void parse_status(int strip, unsigned char *data) {
@@ -267,13 +321,12 @@ void parse_status(int strip, unsigned char *data) {
         return;
     }
     lerror("Device error: %s (0x%02X)", s < 4 ? why[s] : "unknown", s);
+    exit_code = EXIT_FAILURE;
 }
 
 void parse_battery(int strip, unsigned char *data) {
     uint8_t percent = (uint8_t)data[1];
     float voltage = (float)((data[2] << 8) + data[3]) / 1000.0f;
-
-    ldebug("What is data? %s", data);
 
     if(strip) {
         printf("%d%% %.3f\n", percent, voltage);
@@ -329,9 +382,9 @@ void parse_version(int strip, unsigned char *data) {
 }
 
 void parse_conn_mode(int strip, unsigned char *data) {
-    transport mode = (uint8_t)data[1];
+    transport mode = (transport)data[1];
 
-    char *conn_mode;
+    const char *conn_mode;
 
     switch(mode) {
         case TRANSPORT_USB:
@@ -346,7 +399,7 @@ void parse_conn_mode(int strip, unsigned char *data) {
     }
 
     if(strip) {
-        printf("%s", conn_mode);
+        printf("%s\n", conn_mode);
         return;
     }
 
@@ -354,8 +407,7 @@ void parse_conn_mode(int strip, unsigned char *data) {
 }
 
 void parse_ping(int strip, unsigned char *data) {
-    // ping is an echo reply, as in echo back what was sent
-    // I hate you AI
+    (void)data;   // the reply is an echo; getting one at all is the answer
     if(strip) {
         printf("Ping received\n");
         return;
@@ -365,37 +417,19 @@ void parse_ping(int strip, unsigned char *data) {
 }
 
 void parse_os(int strip, unsigned char *data) {
-    // This will return a number. We need to interpret it based on the OS mapping.
-    uint8_t os = (uint8_t)data[1];
-
-    os_variant detected = (os_variant)os;
-    char *os_name;
-    switch(detected) {
-        case OS_UNSURE:
-            os_name = "Unsure";
-            break;
-        case OS_LINUX:
-            os_name = "Linux";
-            break;
-        case OS_WINDOWS:
-            os_name = "Windows";
-            break;
-        case OS_MACOS:
-            os_name = "macOS";
-            break;
-        case OS_IOS:
-            os_name = "iOS";
-            break;
-    }
+    const char *name = os_name((uint8_t)data[1]);
 
     if(strip) {
-        printf("%s", os_name);
+        printf("%s\n", name);
         return;
     }
 
-    linfo("OS: %s", os_name);
+    linfo("OS: %s", name);
 }
 
+/**
+ * @return 0 on success, 1 if the device sent no reply, -1 on a hard error.
+ */
 int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read) {
     int sz = send_command(command, buffer);
     if (sz < 0) {
@@ -406,9 +440,9 @@ int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read) {
 
     if (skip_read) return 0;
 
-    unsigned char resbuffer[sz];
+    unsigned char resbuffer[BUFF_SIZE] = {0};
 
-    int n = read_matching((char)command, resbuffer);
+    int n = read_matching((unsigned char)command, resbuffer);
 
     if (n < 0)
         return -1;
@@ -418,15 +452,54 @@ int respond(COMMANDS command, unsigned char buffer[PARAM_BUFF], int skip_read) {
         return 1;
     }
 
-    if (resbuffer[0] != command) {
-        lwarn("Unexpected command response. Please see below.");
-    }
-
     print_buffer(resbuffer);
 
     memcpy(buffer, resbuffer, PARAM_BUFF);
 
     return 0;
+}
+
+int watch_events(uint8_t mask, int strip) {
+    unsigned char buf[BUFF_SIZE];
+    time_t renew = 0;
+    int rc = 0;
+
+    signal(SIGPIPE, SIG_IGN); // a closed pipe shows up as fflush() == EOF instead
+
+    while (running) {
+        time_t now = time(NULL);
+        if (now >= renew) {
+            if (send_subscribe(mask) < 0) {
+                lerror("subscribe failed: %ls", hid_error(handle));
+                rc = -1;
+                break;
+            }
+            renew = now + WATCH_LEASE_S / 3;
+        }
+
+        int n = hid_read_timeout(handle, buf, sizeof buf, 1000);
+        if (n < 0) {
+            if (!running) break;     // Ctrl-C interrupts poll(); that's a clean stop, not an error
+            lerror("read failed: %ls", hid_error(handle));
+            rc = -1;
+            break;
+        }
+        if (n == 0)
+            continue;
+
+        if (buf[0] == COMMAND_EVENT) {
+            if (print_event(buf, strip) == EOF)
+                break;
+        } else if (buf[0] == COMMAND_SUBSCRIBE && buf[1] != 0) {
+            lerror("device rejected subscription (0x%02X)", buf[1]);
+            rc = -1;
+            break;
+        }                            // anything else (renewal replies, stale frames): ignore
+    }
+
+    unsigned char off[PARAM_BUFF] = { 0 };   // mask 0 = unsubscribe, best effort
+    send_command(COMMAND_SUBSCRIBE, off);
+    return rc;
 }
 
 void send_feature_report() {
@@ -440,13 +513,17 @@ void send_feature_report() {
     hid_send_feature_report(handle, buffer, sizeof(buffer));
 }
 
+/**
+ * @return 0 on success, -1 if the command failed (also recorded in exit_code).
+ */
 int call(int strip, InfoBlock *ib) {
     if (!handle) {
         ERRNEO;
+        exit_code = EXIT_FAILURE;
         return -1;
     }
 
-    if(ib->skip_read && ib->message) {
+    if(ib->message && !strip) {
         linfo("%s", ib->message);
     }
     ldebug("Calling %s", ib->name);
@@ -461,8 +538,8 @@ int call(int strip, InfoBlock *ib) {
         exit(EXIT_FAILURE);
     }
 
-    if(res == 1) {
-        lwarn("No Reply");
+    if(res == 1) {              // respond() already explained why
+        exit_code = EXIT_FAILURE;
         return -1;
     }
 
@@ -471,7 +548,7 @@ int call(int strip, InfoBlock *ib) {
 #ifdef DEBUG
     printf("------\n");
 #endif
-    return 0;
+    return exit_code == EXIT_SUCCESS ? 0 : -1;
 }
 
 void print_info() {
@@ -490,7 +567,7 @@ static hid_device* open_device(void) {
     struct hid_device_info *devices = hid_enumerate(VENDOR_ID, PRODUCT_ID);
     hid_device *device = NULL;
 
-    for(struct hid_device_info *cur = devices; cur; cur = cur ->next) {
+    for(struct hid_device_info *cur = devices; cur; cur = cur->next) {
         if(cur->usage_page == USAGE_PAGE && cur->usage == USAGE_ID) {
             device = hid_open_path(cur->path);
             break;
@@ -531,72 +608,75 @@ int msleep(long msec) {
 }
 
 static void run_requested_commands(const arguments *args) {
-
+    // Sets first (mode before color so a mode change can't undo it), then queries,
+    // then the bootloader, since the device disappears after that.
     if (args->flags.set_rgb_mode) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Set RGB Mode",
-                .command = COMMAND_SET_RGB_MODE,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Setting the RGB mode...",
-                .params = { args->values.rgb_mode }
-            });
+            .name = "Set RGB Mode",
+            .command = COMMAND_SET_RGB_MODE,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Setting the RGB mode...",
+            .params = { args->values.rgb_mode }
+        });
     }
 
     if (args->flags.set_rgb_color) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Set RGB Color",
-                .command = COMMAND_SET_RGB_COLOR,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Setting the RGB color...",
-                .params = { args->values.hsv[0],
-                    args->values.hsv[1],
-                    args->values.hsv[2]
-                }
-            });
+            .name = "Set RGB Color",
+            .command = COMMAND_SET_RGB_COLOR,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Setting the RGB color...",
+            .params = { args->values.hsv[0],
+                        args->values.hsv[1],
+                        args->values.hsv[2] }
+        });
     }
+
     if (args->flags.set_brightness) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Set Brightness",
-                .command = COMMAND_SET_BRIGHTNESS,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Setting the brightness...",
-                .params = { args->values.brightness }
+            .name = "Set Brightness",
+            .command = COMMAND_SET_BRIGHTNESS,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Setting the brightness...",
+            .params = { args->values.brightness }
         });
     }
+
     if (args->flags.clear_led) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Clear LED",
-                .command = COMMAND_CLEAR_LED,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Clearing the LED...",
-                .params = { args->values.clear_idx }
+            .name = "Clear LED",
+            .command = COMMAND_CLEAR_LED,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Clearing the LED...",
+            .params = { args->values.clear_idx }
         });
     }
+
     if (args->flags.set_led) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Set LED",
-                .command = COMMAND_SET_LED,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Setting the LED...",
-                .params = { args->values.led_idx,
-                    args->values.led_rgb[0], args->values.led_rgb[1], args->values.led_rgb[2],
-                    args->values.led_ms >> 8, args->values.led_ms & 0xFF }
+            .name = "Set LED",
+            .command = COMMAND_SET_LED,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Setting the LED...",
+            .params = { args->values.led_idx,
+                        args->values.led_rgb[0], args->values.led_rgb[1], args->values.led_rgb[2],
+                        args->values.led_ms >> 8, args->values.led_ms & 0xFF }
         });
     }
 
     if (args->flags.lock) {
         call(args->flags.strip, &(InfoBlock) {
-                .name = "Lock Keyboard",
-                .command = COMMAND_LOCK,
-                .cb = respond,
-                .parse = parse_status,
-                .message = "Locking the keyboard..."
-            });
+            .name = "Lock Keyboard",
+            .command = COMMAND_LOCK,
+            .cb = respond,
+            .parse = parse_status,
+            .message = "Locking the keyboard..."
+        });
     }
 
     if(args->flags.battery) {
@@ -617,7 +697,7 @@ static void run_requested_commands(const arguments *args) {
         });
     }
 
-    if(args->flags.wpm){
+    if(args->flags.wpm) {
         call(args->flags.strip, &(InfoBlock) {
             .name = "Get Words Per Minute",
             .command = COMMAND_WPM,
@@ -632,16 +712,6 @@ static void run_requested_commands(const arguments *args) {
             .command = COMMAND_LOCK_STATUS,
             .cb = respond,
             .parse = parse_lock_status
-        });
-    }
-
-    if(args->flags.set_brightness) {
-        call(args->flags.strip, &(InfoBlock) {
-            .name = "Set Brightness",
-            .command = COMMAND_SET_BRIGHTNESS,
-            .cb = respond,
-            .skip_read = 1,
-            .message = "Setting the brightness..."
         });
     }
 
@@ -681,24 +751,14 @@ static void run_requested_commands(const arguments *args) {
         });
     }
 
-    if(args->flags.get_event) {
-    	call(args->flags.strip, &(InfoBlock) {
-	    .name = "Get Event",
-	    .command = COMMAND_EVENT,
-	    .cb = respond,
-	    .parse = parse_watch_event
-	});
-    }
-
-    if (args->flags.bootloader) {
-        call(args->flags.strip,
-            &(InfoBlock){
-                .name = "Enter Bootloader",
-                .command = COMMAND_BOOTLOADER,
-                .cb = respond,
-                .skip_read = 1,
-                .message = "Entering bootloader mode...",
-                .params = { 0xDE, 0xAD, 0xB0, 0x0B }
+    if (args->flags.bootloader) {      // keep this LAST
+        call(args->flags.strip, &(InfoBlock) {
+            .name = "Enter Bootloader",
+            .command = COMMAND_BOOTLOADER,
+            .cb = respond,
+            .skip_read = 1,
+            .message = "Entering bootloader mode...",
+            .params = { 0xDE, 0xAD, 0xB0, 0x0B }
         });
     }
 }
@@ -724,8 +784,7 @@ int main(int argc, char **argv) {
     handle = open_device();
 
     if(handle == NULL) {
-        hid_error(NULL);
-        lerror("Unable to open Keyboard Device!");
+        lerror("Unable to open Keyboard Device! Is it plugged in, and does your udev rule apply?");
         cleanup();
         return EXIT_FAILURE;
     }
@@ -769,18 +828,31 @@ int main(int argc, char **argv) {
         int rc = 0;
         if (args.script_path) {
             FILE *f = strcmp(args.script_path, "-") == 0 ? stdin : fopen(args.script_path, "r");
-            if (!f) { lerror("Cannot open %s", args.script_path); cleanup(); return EXIT_FAILURE; }
+            if (!f) {
+                lerror("Cannot open %s", args.script_path);
+                cleanup();
+                return EXIT_FAILURE;
+            }
             rc = run_script(f, 0, args.flags.strip);
             if (f != stdin) fclose(f);
         } else {
             rc = run_script(stdin, 1, args.flags.strip);
         }
         cleanup();
-        return rc ? EXIT_FAILURE : 0;
+        return rc ? EXIT_FAILURE : EXIT_SUCCESS;
     }
+
+    if(args.flags.get_event) {
+        run_requested_commands(&args);   // e.g. `-b --watch` prints the battery once, then streams
+        running = 1;
+        int rc = watch_events(args.values.watch_mask, args.flags.strip);
+        cleanup();
+        return rc ? EXIT_FAILURE : exit_code;
+    }
+
     loop(&args);
 
     cleanup();
 
-    return EXIT_SUCCESS;
+    return exit_code;
 }

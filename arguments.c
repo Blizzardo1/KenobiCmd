@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "arguments.h"
+#include "main.h"
 
 const char *argp_program_version = "kenobicmd 1.0";
 const char *argp_program_bug_address = "<bugz@blizzeta.net>";
@@ -36,6 +37,7 @@ static struct argp_option options[] = {
     {"strip",           's', 0,               0, "Strip text, leave only numbers"},
     {"script",          'S', "PATH",          0, "Run the script from the specified file"},
     {"wpm",             'w', 0,               0, "Get keyboard words per minute (useful with -d)"},
+    {"watch", 'W', "EVENTS", OPTION_ARG_OPTIONAL, "Stream device events: lock,layer,os,battery (default all)"},
     {0}
 };
 
@@ -66,56 +68,62 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
         case 'S': args->script_path = arg;                     break;
         case 't': args->flags.bluetooth = 1;                   break;
         case 'w': args->flags.wpm = 1;                         break;
-            case 'B':
-        if (!parse_int(arg, 0, 255, &v)) argp_error(state, "brightness must be 0-255");
-        args->values.brightness = (uint8_t)v;
-        args->flags.set_brightness = 1;
+        case 'W':
+            args->values.watch_mask = parse_ev_mask(arg);
+            if (!args->values.watch_mask) argp_error(state, "EVENTS must be a list of: lock,layer,os,battery");
+            args->flags.watch = 1;
         break;
 
-    case 'R':
-        if (!parse_int(arg, 0, 255, &v)) argp_error(state, "mode must be 0-255");
-        args->values.rgb_mode = (uint8_t)v;
-        args->flags.set_rgb_mode = 1;
+        case 'B':
+            if (!parse_int(arg, 0, 255, &v)) argp_error(state, "brightness must be 0-255");
+            args->values.brightness = (uint8_t)v;
+            args->flags.set_brightness = 1;
         break;
 
-    case 'C':
-        args->values.clear_idx = 0xFF;                       // default: clear all
-        if (arg) {
-            if (!parse_int(arg, 0, 254, &v)) argp_error(state, "LED index must be 0-254");
-            args->values.clear_idx = (uint8_t)v;
+        case 'R':
+            if (!parse_int(arg, 0, 255, &v)) argp_error(state, "mode must be 0-255");
+            args->values.rgb_mode = (uint8_t)v;
+            args->flags.set_rgb_mode = 1;
+            break;
+
+        case 'C':
+            args->values.clear_idx = 0xFF;                       // default: clear all
+            if (arg) {
+                if (!parse_int(arg, 0, 254, &v)) argp_error(state, "LED index must be 0-254");
+                args->values.clear_idx = (uint8_t)v;
+            }
+            args->flags.clear_led = 1;
+            break;
+
+        case 'G': {
+            int h;
+            int s;
+            int val;
+            if (sscanf(arg, "%d,%d,%d", &h, &s, &val) != 3 ||
+                h < 0 || h > 255 || s < 0 || s > 255 || val < 0 || val > 255)
+                argp_error(state, "expected H,S,V with each value 0-255");
+            args->values.hsv[0] = (uint8_t)h;
+            args->values.hsv[1] = (uint8_t)s;
+            args->values.hsv[2] = (uint8_t)val;
+            args->flags.set_rgb_color = 1;
+            break;
         }
-        args->flags.clear_led = 1;
-        break;
 
-    case 'G': {
-        int h;
-        int s;
-        int val;
-        if (sscanf(arg, "%d,%d,%d", &h, &s, &val) != 3 ||
-            h < 0 || h > 255 || s < 0 || s > 255 || val < 0 || val > 255)
-            argp_error(state, "expected H,S,V with each value 0-255");
-        args->values.hsv[0] = (uint8_t)h;
-        args->values.hsv[1] = (uint8_t)s;
-        args->values.hsv[2] = (uint8_t)val;
-        args->flags.set_rgb_color = 1;
-        break;
-    }
-
-    case 'L': {
-        int idx = 0;
-        int ms = 0;
-        unsigned rgb = 0;
-        int n = sscanf(arg, "%d,%x,%d", &idx, &rgb, &ms);
-        if (n < 2 || idx < 0 || idx > 254 || rgb > 0xFFFFFF || ms < 0 || ms > 65535)
-            argp_error(state, "expected IDX,RRGGBB[,MS]");
-        args->values.led_idx    = (uint8_t)idx;
-        args->values.led_rgb[0] = (rgb >> 16) & 0xFF;
-        args->values.led_rgb[1] = (rgb >> 8)  & 0xFF;
-        args->values.led_rgb[2] =  rgb        & 0xFF;
-        args->values.led_ms     = (n == 3) ? (uint16_t)ms : 0;
-        args->flags.set_led = 1;
-        break;
-    }
+        case 'L': {
+            int idx = 0;
+            int ms = 0;
+            unsigned rgb = 0;
+            int n = sscanf(arg, "%d,%x,%d", &idx, &rgb, &ms);
+            if (n < 2 || idx < 0 || idx > 254 || rgb > 0xFFFFFF || ms < 0 || ms > 65535)
+                argp_error(state, "expected IDX,RRGGBB[,MS]");
+            args->values.led_idx    = (uint8_t)idx;
+            args->values.led_rgb[0] = (rgb >> 16) & 0xFF;
+            args->values.led_rgb[1] = (rgb >> 8)  & 0xFF;
+            args->values.led_rgb[2] =  rgb        & 0xFF;
+            args->values.led_ms     = (n == 3) ? (uint16_t)ms : 0;
+            args->flags.set_led = 1;
+            break;
+        }
         case 'O': args->flags.lock = 1;                        break;
         case 'U': args->flags.bootloader = 1;                  break;
         case 'v': args->flags.get_version = 1;                 break;
